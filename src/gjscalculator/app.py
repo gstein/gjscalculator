@@ -19,6 +19,12 @@ CHR_DIVIDE = '\u00f7'
 CHR_MULTIPLY = '\u00d7'
 CHR_BACKSPACE = '\u232b'
 
+# Keys to clear the expression
+CLEAR_EXPR = {
+    '\x1b',  # ESCAPE
+    '\x7f',  # ALT-BACKSPACE
+    }
+
 # Characters allowed for insertion to EXPR
 ALLOWED_CHR = (
     '0123456789+-*/().'
@@ -40,15 +46,13 @@ class GJSCalculator(toga.App):
         # stack a number of rows in a single column
         main_box = toga.Box(style=Pack(direction=COLUMN))
 
-        self.expr = make_display_item()
-        main_box.add(self.expr)
+        row, self.expr = make_display_item('INPUT')
+        main_box.add(row)
 
-        self.result = make_display_item()
-        self.result.value = 'RESULT:'
-        main_box.add(self.result)
+        row, self.result = make_display_item('RESULT')
+        main_box.add(row)
 
-        self.buttons = [ ]
-        self.alts = [ ]
+        self.have_alts = [ ]
 
         def make_row(*labels):
             # place the buttons along a single row
@@ -56,25 +60,18 @@ class GJSCalculator(toga.App):
             btns = [ ]
             for l in labels:
                 if isinstance(l, Button):
-                    if l.alt:
-                        self.alts.append((len(self.buttons), len(btns), l.label, l.alt))
                     btn = l
-                elif isinstance(l, tuple):
-                    # two forms:
-                    # NAME, ALTNAME, ALTPERFORM
-                    # NAME, PERFORM, ALTNAME, ALTPERFORM
-                    self.alts.append((len(self.buttons), len(btns), l[0], l[1]))
-                    btn = Button(l[0])
                 else:
                     btn = Button(l)
                 btns.append(btn)
                 row.add(btn)
-            self.buttons.append(btns)
+                if btn.alt:
+                    self.have_alts.append(btn)
             main_box.add(row)
 
-        make_row(Button('C', lfunc=self.expr_clear,
+        make_row(Button('C', lfunc=lambda x: '',
                         alt='MC', afunc=self.memory_clear),
-                 Button('MR', lfunc=self.memory_recall,
+                 Button('MR', lfunc=lambda x: self.mvalue,
                         alt='MS', afunc=self.memory_set),
                  Button('M+', lfunc=self.memory_add,
                         alt='M-', afunc=self.memory_subtract),
@@ -92,9 +89,9 @@ class GJSCalculator(toga.App):
                  '+',
                  )
 
-        self.memory = make_display_item()
+        row, self.memory = make_display_item('MEMORY')
         self.set_memory(None)
-        main_box.add(self.memory)
+        main_box.add(row)
 
         self.main_window = toga.MainWindow(title=self.formal_name)
         self.main_window.content = main_box
@@ -104,15 +101,13 @@ class GJSCalculator(toga.App):
         self.main_window._impl.native.connect('key-press-event', self.key_press_handler)
         self.main_window._impl.native.connect('key-release-event', self.key_release_handler)
 
-    def update(self):
+    def set_expr(self, new):
+        self.expr.value = str(new)
         self.result.value = compute(self.expr.value)
 
     def set_memory(self, value):
         self.mvalue = value
-        if value is None:
-            self.memory.value = 'MEM: <unset>'
-        else:
-            self.memory.value = 'MEM: %s' % (value,)
+        self.memory.value = value or ''
 
     def result_as_float(self):
         try:
@@ -123,12 +118,8 @@ class GJSCalculator(toga.App):
     def perform(self, func):
         new = func(self.result_as_float())
         if new is not None:
-            self.expr.value = new
-            self.update()
+            self.set_expr(new)
         # else: don't change the expression
-
-    def expr_clear(self, *_):
-        return ''
 
     def all_clear(self, *_):
         self.memory_clear()
@@ -141,9 +132,6 @@ class GJSCalculator(toga.App):
     def memory_clear(self, *_):
         self.set_memory(None)
         return None
-
-    def memory_recall(self, *_):
-        return self.mvalue  # might be None
 
     def memory_add(self, value):
         if self.mvalue is None:
@@ -161,39 +149,28 @@ class GJSCalculator(toga.App):
 
     def add_character(self, c):
         if c in ALLOWED_CHR:
-            self.expr.value += c
-            self.update()
+            self.set_expr(self.expr.value + c)
 
     def backspace(self, *_):
-        self.expr.value = self.expr.value[:-1]
-        self.update()
+        self.set_expr(self.expr.value[:-1])
 
     def key_press_handler(self, window, event):
         print('PRESS:', repr(event.string), event.state, event.keyval)
         if len(event.string) == 1:
-            if event.string == '\x1b':  # ESCAPE
-                self.expr.value = ''
+            if event.string in CLEAR_EXPR:
+                self.set_expr('')
             elif event.string == '\r':
                 # Operate like the "=" button. Copy result to expr.
-                self.expr.value = self.result.value
+                self.set_expr(self.result.value)
             elif event.string == '\x08':  # BACKSPACE
                 self.backspace()
-                return
-            elif event.string == '\x7f':  # ALT-BACKSPACE
-                self.expr.value = ''
             elif event.string == 'q' or event.string == 'Q':
                 self.exit()
-                return
             else:
                 self.add_character(event.string)
-                return
-
-            self.update()
         elif event.keyval in SHOW_ALT:
-            # ROW, COLUMN, ORIGINAL, ALT
-            for r, c, o, a in self.alts:
-                #print('SWITCH:', r, c, o, a, self.buttons[r][c].label)
-                self.buttons[r][c].label = a
+            for btn in self.have_alts:
+                btn.label = btn.alt
         elif event.state & Gdk.ModifierType.SHIFT_MASK:
             print('SHIFT')
         elif event.state & Gdk.ModifierType.CONTROL_MASK:
@@ -206,10 +183,8 @@ class GJSCalculator(toga.App):
     def key_release_handler(self, window, event):
         print('RELEASE:', repr(event.string), event.state, event.keyval)
         if event.keyval in SHOW_ALT:
-            # ROW, COLUMN, ORIGINAL, ALT
-            for r, c, o, a in self.alts:
-                #print('RESTORE:', r, c, o, a, self.buttons[r][c].label)
-                self.buttons[r][c].label = o
+            for btn in self.have_alts:
+                btn.label = btn.original
 
 
 def compute(expr):
@@ -226,11 +201,19 @@ def compute(expr):
 _EMPTY_NS = { '__builtins__': {}, }
 
 
-def make_display_item():
-    label = toga.TextInput('something', readonly=True)
+def make_display_item(label):
+    row = toga.Box(style=Pack(direction=ROW))
+    label = toga.Label(label)
     label.style.padding = 5
     label.style.flex = 1
-    return label
+    label.style.text_align = 'right'
+    label.style.font_weight = 'bold'
+    row.add(label)
+    value = toga.TextInput('something', readonly=True)
+    value.style.padding = 5
+    value.style.flex = 5
+    row.add(value)
+    return row, value
 
 
 class Button(toga.Button):
