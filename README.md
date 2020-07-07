@@ -8,5 +8,5 @@ Currently, it is hard-wired for Gtk (aka Linux). Other platforms are an
 exercise left for the reader (some specific access to Gtk widgets could
 be made optional, and/or otherwise cross-platform replacement code).
 
-**Briefcase**: https://github.com/beeware/briefcase
-**The BeeWare Project**: https://beeware.org/
+ * **Briefcase**: https://github.com/beeware/briefcase
+ * **The BeeWare Project**: https://beeware.org/
