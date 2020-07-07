@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Briefcase-Version: 0.3.2
+Name: gjscalculator
+Formal-Name: GJS Calculator
+App-ID: org.lyra.gjscalculator
+Version: 0.0.1
+Home-page: https://lyra.org/gjscalculator
+Author: gstein
+Author-email: gstein@gmail.com
+Summary: Simple calculator
